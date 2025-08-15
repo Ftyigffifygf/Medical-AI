@@ -1,0 +1,158 @@
+version: '3.8'
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: medical-ai-postgres
+    environment:
+      POSTGRES_DB: medical_ai
+      POSTGRES_USER: medical_user
+      POSTGRES_PASSWORD: medical_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - medical-ai-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: medical-ai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - medical-ai-network
+
+  # Java Spring Boot Service
+  java-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.java
+    container_name: medical-ai-java
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/medical_ai
+      - SPRING_DATASOURCE_USERNAME=medical_user
+      - SPRING_DATASOURCE_PASSWORD=medical_pass
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - medical-ai-network
+    volumes:
+      - ./logs:/app/logs
+
+  # Python FastAPI Service
+  python-service:
+    build:
+      context: ./python-agents
+      dockerfile: Dockerfile
+    container_name: medical-ai-python
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://medical_user:medical_pass@postgres:5432/medical_ai
+      - JAVA_SERVICE_URL=http://java-service:8080
+      - JS_SERVICE_URL=http://js-service:3000
+      - CPP_SERVICE_URL=cpp-service:50051
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - medical-ai-network
+    volumes:
+      - ./python-agents/models:/app/models
+      - ./logs:/app/logs
+
+  # Node.js Service
+  js-service:
+    build:
+      context: ./js-services
+      dockerfile: Dockerfile
+    container_name: medical-ai-js
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://medical_user:medical_pass@postgres:5432/medical_ai
+      - PYTHON_SERVICE_URL=http://python-service:8000
+      - JAVA_SERVICE_URL=http://java-service:8080
+      - FRONTEND_URL=http://localhost:3001
+    depends_on:
+      - redis
+    networks:
+      - medical-ai-network
+    volumes:
+      - ./js-services/uploads:/app/uploads
+      - ./logs:/app/logs
+
+  # C++ gRPC Service
+  cpp-service:
+    build:
+      context: ./cpp-services
+      dockerfile: Dockerfile
+    container_name: medical-ai-cpp
+    ports:
+      - "50051:50051"
+    environment:
+      - GRPC_PORT=50051
+    networks:
+      - medical-ai-network
+    volumes:
+      - ./cpp-services/models:/app/models
+      - ./logs:/app/logs
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: medical-ai-frontend
+    ports:
+      - "3001:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000
+      - REACT_APP_PYTHON_API_URL=http://localhost:8000
+      - REACT_APP_JAVA_API_URL=http://localhost:8080
+    depends_on:
+      - js-service
+      - python-service
+      - java-service
+    networks:
+      - medical-ai-network
+
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: medical-ai-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - js-service
+      - python-service
+      - java-service
+    networks:
+      - medical-ai-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  medical-ai-network:
+    driver: bridge
