@@ -25,7 +25,7 @@ A comprehensive, multi-language medical AI platform that provides advanced healt
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Ftyigffifygf/Medical-AI
    cd medical-ai-system
    ```
 
@@ -431,5 +431,6 @@ To update the system:
 - [ ] Telemedicine features
 
 ---
+
 
 **⚠️ Important**: This system is for educational and development purposes. For production medical use, ensure compliance with all relevant healthcare regulations and obtain proper certifications.
